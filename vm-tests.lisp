@@ -249,3 +249,43 @@
   (set-register m (1+ +registers-start+) 4)
   (funcall instr +registers-start+ (1+ +registers-start+))
   (is (= 19 (get-register m +registers-start+))))
+
+(test-instruction 16 (m instr num-args)
+  "Test the wmem instruction"
+  (is (= 2 num-args))
+
+  (funcall instr 0 3)
+  (is (= 3 (get-address m 0)))
+
+  (set-register m +registers-start+ 0)
+  (set-register m (1+ +registers-start+) 4)
+  (funcall instr +registers-start+ (1+ +registers-start+))
+  (is (= 4 (get-address m 0))))
+
+(test-instruction 17 (m instr num-args)
+  "Test the call instruction"
+  (is (= 1 num-args))
+
+  (funcall instr 3)
+  (is (= 3 (pc m)))
+  (is (equal (list 1) (stack m)))
+
+  (set-register m (1+ +registers-start+) 4)
+  (funcall instr (1+ +registers-start+))
+  (is (= 4 (pc m)))
+  (is (equal (list 4 1) (stack m))))
+
+(test-instruction 18 (m instr num-args)
+  "Test the ret instruction"
+  (is (= 0 num-args))
+
+  (eq 'halt (funcall instr))
+
+  (setf (stack m) (list 4))
+  (funcall instr)
+  (is (= (pc m) 4)))
+
+(test-instruction 21 (m instr num-args)
+  "Test the noop instruction"
+  (is (= 0 num-args))
+  (null (funcall instr)))

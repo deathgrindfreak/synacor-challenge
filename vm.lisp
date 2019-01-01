@@ -16,6 +16,8 @@
    :inc-pc
    :value-or-register
    :get-instruction-method
+   :call-instruction
+   :run-program
    :run-program-from-file
    :read-program-from-file)
   (:documentation "Module for the Synacor challenge VM"))
@@ -90,14 +92,17 @@ variables in the lookup list are pulled from a register or passed in depending o
 (defmacro def-reg-instr (machine arg-list lookup-list &body body)
   "Returns a function defined by definstr and increments the program counter"
   `(definstr ,machine ,arg-list ,lookup-list
-     (progn
-       ,@body
-       (inc-pc ,machine))))
+     (let ((b (progn ,@body)))
+       (progn
+         (inc-pc ,machine (+ 1
+                             (length (list ,@arg-list))
+                             (length (list ,@lookup-list))))
+         b))))
 
 (defmethod get-instruction-method ((m machine) instr)
   "Returns the method to call in order to run the instruction in the VM"
   (case instr
-    (0 (values (lambda () 'halt) 0))
+    (0 (def-reg-instr m () () 'halt))
 
     (1 (def-reg-instr m (a) (b)
          (set-register m a b)))
@@ -157,16 +162,36 @@ variables in the lookup list are pulled from a register or passed in depending o
           (push (1+ (pc m)) (stack m))
           (setf (pc m) a)))
 
+    (18 (definstr m () ()
+          (if (null (stack m))
+              'halt
+              (let ((top (pop (stack m))))
+                (setf (pc m) top)))))
+
     (19 (def-reg-instr m (a) ()
           (format t "~a" (code-char a))))
 
     (20 (def-reg-instr m (a) ()
           (set-register m a (char-code (elt (read-line) 0)))))
 
-    (21 (def-reg-instr m () () ()))))
+    (21 (def-reg-instr m () ()))))
 
-(defun run (machine)
-  machine)
+(defmethod call-instruction ((m machine) instruction)
+  "Call the instruction on the running machine"
+  (multiple-value-bind (instr-fun num-args)
+      (get-instruction-method m instruction)
+    (let* ((curr-pc (pc m))
+           (args (subseq (program m) (1+ curr-pc) (+ 1 num-args curr-pc))))
+      (apply instr-fun (coerce args 'list)))))
+
+(defun run-program (machine)
+  "Runs a program til it halts"
+  (loop for curr-instr = (elt (program machine) (pc machine))
+        for instr-call = (call-instruction machine curr-instr)
+        when (or (>= (pc machine)
+                     (length (program machine)))
+                 (eq instr-call 'halt))
+          return machine))
 
 (defun read-program-from-file (src)
   (with-open-file (in src :element-type '(unsigned-byte 8))
@@ -177,4 +202,4 @@ variables in the lookup list are pulled from a register or passed in depending o
 
 (defun run-program-from-file (src)
   "Runs a program from a file"
-  (run (make-instance 'machine :program (read-program-from-file src))))
+  (run-program (make-instance 'machine :program (read-program-from-file src))))
