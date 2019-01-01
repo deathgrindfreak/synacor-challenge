@@ -2,7 +2,13 @@
   (:use
    :cl)
   (:export
+   :+registers-start+
+   :+registers-end+
    :machine
+   :program
+   :pc
+   :register
+   :stack
    :get-register
    :set-register
    :get-address
@@ -13,6 +19,7 @@
    :run-program-from-file
    :read-program-from-file)
   (:documentation "Module for the Synacor challenge VM"))
+(in-package :vm)
 
 (defconstant +registers-start+ 32768
   "The start of the numbers signifying registers.  All values lower are plain values")
@@ -90,7 +97,7 @@ variables in the lookup list are pulled from a register or passed in depending o
 (defmethod get-instruction-method ((m machine) instr)
   "Returns the method to call in order to run the instruction in the VM"
   (case instr
-    (0 'halt)
+    (0 (values (lambda () 'halt) 0))
 
     (1 (def-reg-instr m (a) (b)
          (set-register m a b)))
@@ -99,7 +106,9 @@ variables in the lookup list are pulled from a register or passed in depending o
          (push a (stack m))))
 
     (3 (def-reg-instr m (a) ()
-         (set-register m a (pop (stack m)))))
+         (if (null (stack m))
+             (error "Stack is empty!")
+             (set-register m a (pop (stack m))))))
 
     (4 (def-reg-instr m (a) (b c)
          (set-register m a (if (= b c) 1 0))))
@@ -135,14 +144,14 @@ variables in the lookup list are pulled from a register or passed in depending o
     (13 (def-reg-instr m (a) (b c)
           (set-register m a (logior b c))))
 
-    (14 (def-reg-instr m (a) (b c)
-          (set-register m a (lognor b c))))
+    (14 (def-reg-instr m (a) (b)
+          (set-register m a (lognot b))))
 
     (15 (def-reg-instr m (a) (b)
-          (set-register m a (get-address b))))
+          (set-register m a (get-address m b))))
 
     (16 (def-reg-instr m () (a b)
-          (set-address a b)))
+          (set-address m a b)))
 
     (17 (definstr m () (a)
           (push (1+ (pc m)) (stack m))
@@ -159,13 +168,13 @@ variables in the lookup list are pulled from a register or passed in depending o
 (defun run (machine)
   machine)
 
-(defun run-program-from-file (src)
-  "Runs a program from a file"
-  (run (make-instance 'machine :program (read-program-from-file src))))
-
 (defun read-program-from-file (src)
   (with-open-file (in src :element-type '(unsigned-byte 8))
     (apply #'vector
            (loop for addr = (read-int-u16le in)
                  while addr
                  collect addr))))
+
+(defun run-program-from-file (src)
+  "Runs a program from a file"
+  (run (make-instance 'machine :program (read-program-from-file src))))
