@@ -13,7 +13,7 @@
 
 (defun make-test-machine ()
   (make-instance 'machine
-                 :program (list 9 32768 32769 4 19 32768)))
+                 :program (vector 9 32768 32769 4 19 32768)))
 
 (test inc-pc-test
   "Test incrementing pc properly"

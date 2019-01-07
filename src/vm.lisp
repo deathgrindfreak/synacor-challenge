@@ -1,9 +1,9 @@
 (defpackage :vm
   (:use
-   :cl)
+   :cl
+   :constants
+   :read-binary)
   (:export
-   :+registers-start+
-   :+registers-end+
    :machine
    :program
    :pc
@@ -23,23 +23,6 @@
   (:documentation "Module for the Synacor challenge VM"))
 (in-package :vm)
 
-(defconstant +registers-start+ 32768
-  "The start of the numbers signifying registers.  All values lower are plain values")
-
-(defconstant +registers-end+ 32775
-  "The end of the numbers signifying registers.  All values above are invalid")
-
-(defun read-int-u16le (in)
-  "Read an unsigned 16-bit little endian integer"
-  (let ((lb (read-byte in nil nil))
-        (hb (read-byte in nil nil))
-        (u2 0))
-    (and lb hb
-         (progn
-           (setf (ldb (byte 8 0) u2) lb)
-           (setf (ldb (byte 8 8) u2) hb)
-           u2))))
-
 (defclass machine ()
   ((program
     :initarg :program
@@ -57,6 +40,10 @@
     :initform nil
     :accessor stack
     :documentation "The program stack")))
+
+(defun make-machine (program)
+  "Make a machine instance from a program.  Program should be a list"
+  (make-instance 'machine :program (apply #'vector program)))
 
 (defmethod inc-pc ((m machine) &optional (a 1)) (incf (pc m) a))
 
@@ -94,14 +81,18 @@ variables in the lookup list are pulled from a register or passed in depending o
   `(definstr ,machine ,arg-list ,lookup-list
      (let ((b (progn ,@body)))
        (progn
-         (inc-pc ,machine (+ 1
-                             (length (list ,@arg-list))
-                             (length (list ,@lookup-list))))
+         (inc-pc ,machine ,(+ 1 (length arg-list) (length lookup-list)))
          b))))
 
-(defmethod get-instruction-method ((m machine) instr)
+(defmacro def-math-instr (machine (reg) lookup-list op)
+  "Returns a function that operates with a math function mod 32768"
+  `(def-reg-instr ,machine (,reg) ,lookup-list
+     (set-register ,machine ,reg
+                   (mod (funcall ,op ,@lookup-list) +registers-start+))))
+
+(defmethod get-instruction-method ((m machine) op)
   "Returns the method to call in order to run the instruction in the VM"
-  (case instr
+  (case op
     (0 (def-reg-instr m () () 'halt))
 
     (1 (def-reg-instr m (a) (b)
@@ -126,31 +117,25 @@ variables in the lookup list are pulled from a register or passed in depending o
 
     (7 (definstr m () (a b)
          (if (zerop a)
-             (inc-pc m)
+             (inc-pc m 3)
              (setf (pc m) b))))
 
     (8 (definstr m () (a b)
          (if (zerop a)
              (setf (pc m) b)
-             (inc-pc m))))
+             (inc-pc m 3))))
 
-    (9 (def-reg-instr m (a) (b c)
-         (set-register m a (mod (+ b c) +registers-start+))))
+    (9 (def-math-instr m (a) (b c) #'+))
 
-    (10 (def-reg-instr m (a) (b c)
-          (set-register m a (mod (* b c) +registers-start+))))
+    (10 (def-math-instr m (a) (b c) #'*))
 
-    (11 (def-reg-instr m (a) (b c)
-          (set-register m a (mod b c))))
+    (11 (def-math-instr m (a) (b c) #'mod))
 
-    (12 (def-reg-instr m (a) (b c)
-          (set-register m a (logand b c))))
+    (12 (def-math-instr m (a) (b c) #'logand))
 
-    (13 (def-reg-instr m (a) (b c)
-          (set-register m a (logior b c))))
+    (13 (def-math-instr m (a) (b c) #'logior))
 
-    (14 (def-reg-instr m (a) (b)
-          (set-register m a (lognot b))))
+    (14 (def-math-instr m (a) (b) #'lognot))
 
     (15 (def-reg-instr m (a) (b)
           (set-register m a (get-address m b))))
@@ -159,7 +144,7 @@ variables in the lookup list are pulled from a register or passed in depending o
           (set-address m a b)))
 
     (17 (definstr m () (a)
-          (push (1+ (pc m)) (stack m))
+          (push (+ 2 (pc m)) (stack m))
           (setf (pc m) a)))
 
     (18 (definstr m () ()
@@ -168,13 +153,15 @@ variables in the lookup list are pulled from a register or passed in depending o
               (let ((top (pop (stack m))))
                 (setf (pc m) top)))))
 
-    (19 (def-reg-instr m (a) ()
+    (19 (def-reg-instr m () (a)
           (format t "~a" (code-char a))))
 
     (20 (def-reg-instr m (a) ()
-          (set-register m a (char-code (elt (read-line) 0)))))
+          (set-register m a (char-code (read-char)))))
 
-    (21 (def-reg-instr m () ()))))
+    (21 (def-reg-instr m () ()))
+
+    (otherwise (error "Bad op code: 0x~x" op))))
 
 (defmethod call-instruction ((m machine) instruction)
   "Call the instruction on the running machine"
@@ -185,21 +172,18 @@ variables in the lookup list are pulled from a register or passed in depending o
       (apply instr-fun (coerce args 'list)))))
 
 (defun run-program (machine)
-  "Runs a program til it halts"
+  "Runs a program till it halts"
   (loop for curr-instr = (elt (program machine) (pc machine))
         for instr-call = (call-instruction machine curr-instr)
         when (or (>= (pc machine)
                      (length (program machine)))
                  (eq instr-call 'halt))
-          return machine))
-
-(defun read-program-from-file (src)
-  (with-open-file (in src :element-type '(unsigned-byte 8))
-    (apply #'vector
-           (loop for addr = (read-int-u16le in)
-                 while addr
-                 collect addr))))
+          return nil))
 
 (defun run-program-from-file (src)
   "Runs a program from a file"
-  (run-program (make-instance 'machine :program (read-program-from-file src))))
+  (run-program (make-machine (read-program-from-file src))))
+
+(defun run ()
+  "Run the included program"
+  (run-program-from-file "../bin/challenge.bin"))
