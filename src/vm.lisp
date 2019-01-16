@@ -90,7 +90,7 @@ variables in the lookup list are pulled from a register or passed in depending o
      (set-register ,machine ,reg
                    (mod (funcall ,op ,@lookup-list) +registers-start+))))
 
-(defmethod get-instruction-method ((m machine) op)
+(defmethod get-instruction-method ((m machine) op &optional (s *standard-input*))
   "Returns the method to call in order to run the instruction in the VM"
   (case op
     (0 (def-reg-instr m () () 'halt))
@@ -157,33 +157,43 @@ variables in the lookup list are pulled from a register or passed in depending o
           (format t "~a" (code-char a))))
 
     (20 (def-reg-instr m (a) ()
-          (set-register m a (char-code (read-char)))))
+          (let ((ch (read-char s nil :eof)))
+            ;; If :eof is encountered, set the stream to stdin and read a char from there
+            (when (eq ch :eof)
+              (setf s *standard-input*
+                    ch (read-char s)))
+            (set-register m a (char-code ch)))))
 
     (21 (def-reg-instr m () ()))
 
     (otherwise (error "Bad op code: 0x~x" op))))
 
-(defmethod call-instruction ((m machine) instruction)
+(defmethod call-instruction ((m machine) instruction &optional (s *standard-input*))
   "Call the instruction on the running machine"
   (multiple-value-bind (instr-fun num-args)
-      (get-instruction-method m instruction)
+      (get-instruction-method m instruction s)
     (let* ((curr-pc (pc m))
            (args (subseq (program m) (1+ curr-pc) (+ 1 num-args curr-pc))))
       (apply instr-fun (coerce args 'list)))))
 
-(defun run-program (machine)
+(defun run-program (machine &optional (s *standard-input*))
   "Runs a program till it halts"
   (loop for curr-instr = (elt (program machine) (pc machine))
-        for instr-call = (call-instruction machine curr-instr)
+        for instr-call = (call-instruction machine curr-instr s)
         when (or (>= (pc machine)
                      (length (program machine)))
                  (eq instr-call 'halt))
           return nil))
 
-(defun run-program-from-file (src)
+(defun run-program-from-file (src &optional (s *standard-input*))
   "Runs a program from a file"
-  (run-program (make-machine (read-program-from-file src))))
+  (run-program (make-machine (read-program-from-file src)) s))
 
 (defun run ()
   "Run the included program"
   (run-program-from-file "../bin/challenge.bin"))
+
+(defun run-with-script ()
+  "Run the included program"
+  (with-open-file (in "../adventure-script")
+    (run-program-from-file "../bin/challenge.bin" in)))
