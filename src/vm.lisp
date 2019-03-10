@@ -70,8 +70,8 @@ variables in the lookup list are pulled from a register or passed in depending o
   `(values #'(lambda ,(append arg-list lookup-list)
                (progn
                  ,@(mapcar #'(lambda (x)
-                              `(setf ,x (value-or-register ,machine ,x)))
-                          lookup-list)
+                               `(setf ,x (value-or-register ,machine ,x)))
+                           lookup-list)
                  ,@body))
            ,(+ (length arg-list)
                (length lookup-list))))
@@ -113,7 +113,7 @@ variables in the lookup list are pulled from a register or passed in depending o
          (set-register m a (if (> b c) 1 0))))
 
     (6 (definstr m () (a)
-           (setf (pc m) a)))
+         (setf (pc m) a)))
 
     (7 (definstr m () (a b)
          (if (zerop a)
@@ -179,21 +179,19 @@ variables in the lookup list are pulled from a register or passed in depending o
 (defun run-program (machine &optional (s *standard-input*))
   "Runs a program till it halts"
   (loop for curr-instr = (elt (program machine) (pc machine))
-        for instr-call = (call-instruction machine curr-instr s)
-        when (or (>= (pc machine)
-                     (length (program machine)))
-                 (eq instr-call 'halt))
-          return nil))
+     for instr-call = (call-instruction machine curr-instr s)
+     when (or (>= (pc machine)
+                  (length (program machine)))
+              (eq instr-call 'halt))
+     return nil))
 
 (defun run-program-from-file (src &optional (s *standard-input*))
   "Runs a program from a file"
   (run-program (make-machine (read-program-from-file src)) s))
 
-(defun run ()
+(defun run (&optional (challenge-program "../bin/challenge.bin") script)
   "Run the included program"
-  (run-program-from-file "../bin/challenge.bin"))
-
-(defun run-with-script ()
-  "Run the included program"
-  (with-open-file (in "../adventure-script")
-    (run-program-from-file "../bin/challenge.bin" in)))
+  (if script
+      (with-open-file (in script)
+        (run-program-from-file challenge-program in))
+      (run-program-from-file challenge-program)))

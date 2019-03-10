@@ -1,3 +1,4 @@
+take tablet
 doorway
 north
 north
@@ -10,3 +11,43 @@ west
 west
 passage
 ladder
+west
+south
+north
+take can
+use can
+west
+ladder
+use lantern
+darkness
+continue
+west
+west
+west
+west
+north
+take red coin
+north
+east
+take concave coin
+down
+take corroded coin
+up
+west
+west
+take blue coin
+up
+take shiny coin
+down
+east
+use blue coin
+use red coin
+use shiny coin
+use concave coin
+use corroded coin
+north
+take teleporter
+use teleporter
+take business card
+take strange book
+look strange book
